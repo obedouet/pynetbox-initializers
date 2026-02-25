@@ -6,6 +6,13 @@ from typing import Dict, Any
 class EntityTransformer:
     """Transforms YAML data to match Netbox API requirements."""
     
+    def transform(self, entity_name, data)-> Dict[str, Any]:
+        """Wrapper to entity method"""
+        if hasattr(self, "transform_"+entity_name):
+            return getattr(self, "transform_"+entity_name)(data)
+        else:
+            return None
+
     @staticmethod
     def transform_custom_fields(data: Dict[str, Any]) -> Dict[str, Any]:
         """Transform custom_fields YAML data.

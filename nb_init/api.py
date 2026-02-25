@@ -1,9 +1,9 @@
 """API wrapper for Netbox operations."""
 import logging
 from typing import Optional, Dict, Any
+import pynetbox
 from .connection import NetboxConnection
 from .transformations import EntityTransformer
-
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,83 @@ class NetboxAPI:
         for item in items:
             return item
         return None
+
+    def get_or_create(self, entity_type: str, name: str, data: Dict[str, Any]) -> Optional[Dict]:
+        """Get an existing entity or create a new one.
         
+        Args:
+            entity_type: Type of entity (e.g., 'device_type', 'site', 'vlan')
+            name: Name of the entity
+            data: Data for creating the entity
+            
+        Returns:
+            The existing or newly created entity, or None if failed
+        """
+        try:
+            # Try to get the entity by name first
+            method_name = f"get_{entity_type}"
+            
+            # Handle entity names that might differ from method names
+            # e.g., "virtual_machines" -> "virtual_machine", "device_types" -> "device_type"
+            if not hasattr(self.api, method_name):
+                # Try singular form
+                singular_name = entity_type
+                if entity_type.endswith("s"):
+                    singular_name = entity_type[:-1]
+                
+                # Try common variations
+                for suffix in ["_types", "_groups", "_roles", "_feeds", "_types_", "_groups_", "_roles_", "_feeds_"]:
+                    if singular_name.endswith(suffix):
+                        singular_name = singular_name[:-len(suffix)]
+                        break
+                
+                method_name = f"get_{singular_name}"
+            
+            # Try to get the entity
+            try:
+                entity = getattr(self.api, method_name)(name)
+                if entity:
+                    return entity
+            except AttributeError:
+                pass
+            except pynetbox.RequestError as e:
+                # If entity doesn't exist, this will raise an error, which is expected
+                if "Not Found" in str(e):
+                    pass
+                else:
+                    raise
+            
+            # If we get here, the entity doesn't exist, so create it
+            create_method_name = f"create_{entity_type}"
+            if not hasattr(self.api, create_method_name):
+                # Try singular form
+                singular_name = entity_type
+                if entity_type.endswith("s"):
+                    singular_name = entity_type[:-1]
+                
+                for suffix in ["_types", "_groups", "_roles", "_feeds", "_types_", "_groups_", "_roles_", "_feeds_"]:
+                    if singular_name.endswith(suffix):
+                        singular_name = singular_name[:-len(suffix)]
+                        break
+                
+                create_method_name = f"create_{singular_name}"
+            
+            # Transform data using the transformer if available
+            transformed_data = self.transformer.transform(entity_type, data) if self.transformer else data
+            
+            # Create the entity
+            entity = getattr(self.api, create_method_name)(**transformed_data)
+            
+            # Return the created entity (includes ID and other fields)
+            return entity
+            
+        except pynetbox.RequestError as e:
+            logger.error(f"Error in get_or_create for {entity_type} '{name}': {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error in get_or_create for {entity_type} '{name}': {e}")
+            return None
+
     def create_device(self, device_data: Dict) -> Optional[Dict]:
         """Create device.
         
