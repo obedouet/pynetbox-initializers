@@ -5,7 +5,8 @@ from typing import Dict, Any
 ENTITY_UNIQUE_NAME = {
         "asns": "asn",
         "ip_addresses":"address",
-        "device_types":"model"
+        "device_types":"model",
+        "prefixes":"prefix"
     }
 
 def get_unique_name(entity_name: str, item_data: Dict[str, Any]) -> str:
