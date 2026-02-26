@@ -5,6 +5,7 @@ import pynetbox
 from .connection import NetboxConnection
 from .transformations import EntityTransformer
 from .nb_naming import get_unique_name
+from .name_template import expand_name_template
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,7 @@ class NetboxAPI:
             "contact_groups": self.api.tenancy.contact_groups,
             "contact_roles": self.api.tenancy.contact_roles,
             "contacts": self.api.tenancy.contacts,
+            "interface_templates": self.api.dcim.interface_templates
             }
             
         return endpoint_map.get(entity_name)
@@ -309,11 +311,45 @@ class NetboxAPI:
         """
         try:
             transformed_data = self.transformer.transform_device_types(device_type_data)
+            # Check manufacturer
+            if 'manufacturer' in transformed_data:
+                device_manufacturer=self._get_first_by_name('manufacturers',transformed_data['manufacturer'])
+                if device_manufacturer is None:
+                    logger.error(f"Error checking manufacturer: {transformed_data['manufacturer']}")
+                    return None
+                transformed_data['manufacturer']=device_manufacturer['id']
             device = (self._get_endpoint('device_types')).create(**transformed_data)
             logger.info(f"Created device {transformed_data.get(get_unique_name('device_types', device_type_data))}")
+            if 'interfaces' in transformed_data:
+                for intf_template in transformed_data['interfaces']:
+                    intf_template['device_type']=device['id']
+                    if 'name_template' in intf_template:
+                        for intf_name in expand_name_template(intf_template['name_template']):
+                            intf_template['name']=intf_name
+                            self.create_interface_templates(intf_template) 
+                    else:
+                        self.create_interface_templates(intf_template)
             return device
         except Exception as e:
             logger.error(f"Error creating device_types: {e}")
+            return None
+
+    def create_interface_templates(self, interface_data: Dict) -> Optional[Dict]:
+        """Create interface_template.
+        
+        Args:
+            interface_data: interface data dictionary
+            
+        Returns:
+            Created interface or None
+        """
+        try:
+            transformed_data = self.transformer.transform_interface_templates(interface_data)
+            interface = (self._get_endpoint('interface_templates')).create(**transformed_data)
+            logger.info(f"Created interface {transformed_data.get(get_unique_name('interface_templates', interface_data))}")
+            return interface
+        except Exception as e:
+            logger.error(f"Error creating interface_template: {e}")
             return None
 
     def create_ip_addresses(self, ip_data: Dict) -> Optional[Dict]:
