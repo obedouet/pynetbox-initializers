@@ -168,6 +168,20 @@ class NetboxAPI:
             return None
         return endpoint.get(address=name, device=device)
 
+    def get_prefixes(self, name: str)-> Optional[Dict]:
+        """Get a prefix.
+
+        Args:
+            name: prefix
+        
+        Returns:
+            Item dictionary or None
+        """
+        endpoint = self._get_endpoint('prefixes')
+        if not endpoint:
+            return None
+        return endpoint.get(prefix=name)
+
     def _get_first_by_name(self, entity_name, name: str) -> Optional[Dict]:
         """Get item by name.
         
