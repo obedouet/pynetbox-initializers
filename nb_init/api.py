@@ -59,7 +59,7 @@ class NetboxAPI:
             "cluster_types": self.api.virtualization.cluster_types,
             "cluster_groups": self.api.virtualization.cluster_groups,
             "clusters": self.api.virtualization.clusters,
-            "prefix_vlan_roles": self.api.ipam.prefix_vlan_roles,
+            "prefix_vlan_roles": self.api.ipam.roles,
             "vlan_groups": self.api.ipam.vlan_groups,
             "vlans": self.api.ipam.vlans,
             "devices": self.api.dcim.devices,
