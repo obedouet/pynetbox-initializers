@@ -195,6 +195,9 @@ class EntityTransformer:
     @staticmethod
     def transform_devices(data: Dict[str, Any]) -> Dict[str, Any]:
         """Transform devices YAML data if needed."""
+        if 'local_context_data' in data:
+            # API expect a json-formatted string
+            data['local_context_data']=str(data['local_context_data'])
         return data
     
     @staticmethod

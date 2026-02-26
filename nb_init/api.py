@@ -24,6 +24,7 @@ class NetboxAPI:
         else:
             self.api = api
         self.transformer = EntityTransformer()
+        self.primary_ips = []
 
     def _get_endpoint(self, entity_name: str):
         """Get the pynetbox endpoint for an entity.
@@ -293,6 +294,20 @@ class NetboxAPI:
         """
         try:
             transformed_data = self.transformer.transform_devices(device_data)
+            for device_property in ['device_type','role','site','location','rack','config_template','primary_ip4']:
+                if device_property in transformed_data:
+                    if device_property == 'primary_ip4':
+                        # Manage primary ip4 later
+                        self.primary_ips.append({'ip4':transformed_data['primary_ip4'],'device':transformed_data.get('name')})
+                        transformed_data.pop('primary_ip4')
+                        continue
+                    else:
+                        # Change property to id
+                        nb_property = self._get_first_by_name(device_property+'s',name=transformed_data[device_property])
+                    if nb_property is None:
+                        logger.error(f"Error getting {transformed_data[device_property]} for {transformed_data.get('name')}")
+                        return None
+                    transformed_data[device_property]=nb_property['id']
             device = self.api.dcim.devices.create(**transformed_data)
             logger.info(f"Created device {transformed_data.get('name')}")
             return device
