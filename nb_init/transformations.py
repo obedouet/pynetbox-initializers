@@ -9,7 +9,7 @@ def map_model_to_endpoint(model_string: str) -> str:
         model_string: Model string like 'dcim.models.Device' or 'dcim.Device'
         
     Returns:
-        Endpoint string like 'dcim.Device'
+        Endpoint string like 'dcim.device'
     """
     # Split by 'models'
     if 'models.' in model_string:
@@ -20,7 +20,12 @@ def map_model_to_endpoint(model_string: str) -> str:
     return model_string.lower()
 
 class EntityTransformer:
-    """Transforms YAML data to match Netbox API requirements."""
+    """Transforms YAML data to match Netbox API requirements.
+
+    Yaml file from netbox-initializers does not have the same fields
+    as expected by Netbox API. Transformers change this fields for all
+    the different entities.
+    """
     
     def transform(self, entity_name, data)-> Dict[str, Any]:
         """Wrapper to entity method"""
@@ -67,6 +72,11 @@ class EntityTransformer:
         """Transform config_templates YAML data if needed."""
         return data
     
+    @staticmethod
+    def transform_interface_templates(data: Dict[str, Any]) -> Dict[str, Any]:
+        """Transform interface_templates YAML data if needed."""
+        return data
+
     @staticmethod
     def transform_webhooks(data: Dict[str, Any]) -> Dict[str, Any]:
         """Transform webhooks YAML data if needed."""
