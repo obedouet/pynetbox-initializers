@@ -1,6 +1,8 @@
 """API wrapper for Netbox operations."""
 import logging
 from typing import Optional, Dict, Any
+import json
+
 import pynetbox
 from .connection import NetboxConnection
 from .transformations import EntityTransformer
@@ -54,6 +56,10 @@ class NetboxAPI:
         if not endpoint:
             return None
         return endpoint.get(model=name)
+
+    def get_role(self, name: str) -> Optional[Dict]:
+        """Func alias for get_device_role"""
+        return self.get_device_role(name)
 
     def get_device_role(self, name: str) -> Optional[Dict]:
         """Get device role by name.
@@ -135,6 +141,50 @@ class NetboxAPI:
         if not endpoint:
             return None
         return endpoint.get(prefix=name)
+
+    def get_rack(self, name: str)-> Optional[Dict]:
+        """Get a rack.
+
+        Args:
+            name: rack
+        
+        Returns:
+            Item dictionary or None
+        """
+        endpoint = get_endpoint(self.api, 'racks')
+        if not endpoint:
+            return None
+        return endpoint.get(name=name)
+
+    def get_entity(self, entity_name: str, name:str) -> Optional[Dict]:
+        """Get item by name from entity.
+
+        Args:
+            entity_name: Netbox entity
+            name: Item name
+            
+        Returns:
+            Item dictionary or None
+        """
+        # Try to get the entity by name first
+        method_name = f"get_{entity_name}"
+
+        if not hasattr(self, method_name):
+            # Try singular or plural form
+            singular_name = entity_name
+            if entity_name.endswith("s"):
+                singular_name = entity_name[:-1]
+                method_name = f"get_{singular_name}"
+            else:
+                method_name = f"get_{entity_name}s"
+            
+            if not hasattr(self, method_name):
+                res = self._get_first_by_name(entity_name=entity_name, name=name)
+                if res is None:
+                    # retry plural
+                    return self._get_first_by_name(entity_name=entity_name+'s', name=name)
+
+        return (getattr(self, method_name))(name)
 
     def _get_first_by_name(self, entity_name, name: str) -> Optional[Dict]:
         """Get item by name.
@@ -244,6 +294,7 @@ class NetboxAPI:
             Created device or None
         """
         try:
+            local_context=None
             transformed_data = self.transformer.transform_devices(device_data)
             for device_property in ['device_type','role','site','location','rack','config_template','primary_ip4']:
                 if device_property in transformed_data:
@@ -254,7 +305,7 @@ class NetboxAPI:
                         continue
                     else:
                         # Change property to id
-                        nb_property = self._get_first_by_name(device_property+'s',name=transformed_data[device_property])
+                        nb_property = self.get_entity(device_property,name=transformed_data[device_property])
                     if nb_property is None:
                         logger.error(f"Error getting {transformed_data[device_property]} for {transformed_data.get('name')}")
                         return None
@@ -264,6 +315,7 @@ class NetboxAPI:
             return device
         except Exception as e:
             logger.error(f"Error creating device: {e}")
+            logger.error(f"Request: {transformed_data}")
             return None
 
     def create_device_type(self, device_type_data: Dict) -> Optional[Dict]:
@@ -363,7 +415,7 @@ class NetboxAPI:
                 # configure primary ip4
                 if device['name']==is_assigned['device']:
                     device['primary_ip4']=ip['id']
-                    (get_endpoint(self.api, "devices")).update(device)
+                    device.save()
             return ip
         except Exception as e:
             logger.error(f"Error creating IP address: {e}")
