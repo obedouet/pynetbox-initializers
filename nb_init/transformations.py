@@ -2,6 +2,22 @@
 
 from typing import Dict, Any
 
+def map_model_to_endpoint(model_string: str) -> str:
+    """Map Netbox model string to API endpoint string.
+    
+    Args:
+        model_string: Model string like 'dcim.models.Device' or 'dcim.Device'
+        
+    Returns:
+        Endpoint string like 'dcim.Device'
+    """
+    # Split by 'models'
+    if 'models.' in model_string:
+        parts = model_string.split('models.')
+        module = parts[0]
+        endpoint = parts[1]
+        return f"{module.lower()}{endpoint.lower()}"
+    return model_string.lower()
 
 class EntityTransformer:
     """Transforms YAML data to match Netbox API requirements."""
@@ -24,7 +40,11 @@ class EntityTransformer:
             Transformed data for Netbox API
         """
         if 'on_objects' in data:
-            data['object_types'] = data.pop('on_objects')
+            old_list = data.pop('on_objects')
+            new_list=[]
+            for item in old_list:
+                new_list.append(map_model_to_endpoint(item))
+            data['object_types'] = new_list
         return data
     
     @staticmethod
