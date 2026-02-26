@@ -154,6 +154,20 @@ class NetboxAPI:
                 return interface
         return None
         
+    def get_ip_addresses(self, name: str, device: str)-> Optional[Dict]:
+        """Get an ip address.
+
+        Args:
+            name: ip address
+        
+        Returns:
+            Item dictionary or None
+        """
+        endpoint = self._get_endpoint('ip_addresses')
+        if not endpoint:
+            return None
+        return endpoint.get(address=name, device=device)
+
     def _get_first_by_name(self, entity_name, name: str) -> Optional[Dict]:
         """Get item by name.
         
@@ -288,7 +302,7 @@ class NetboxAPI:
             logger.error(f"Error creating device_types: {e}")
             return None
 
-    def create_ip_address(self, ip_data: Dict) -> Optional[Dict]:
+    def create_ip_addresses(self, ip_data: Dict) -> Optional[Dict]:
         """Create IP address.
         
         Args:
