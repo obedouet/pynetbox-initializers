@@ -10,16 +10,82 @@ logger = logging.getLogger(__name__)
 
 class NetboxAPI:
     """Wrapper for Netbox API operations."""
-    def __init__(self, connection: NetboxConnection):
+    def __init__(self, connection: NetboxConnection = None, api: pynetbox.api = None):
         """Initialize Netbox API wrapper.
         
         Args:
             connection: NetboxConnection instance
         """
         self.connection = connection
-        self.api = connection.connect()
+        if api is None:
+            self.api = connection.connect()
+        else:
+            self.api = api
         self.transformer = EntityTransformer()
+
+    def _get_endpoint(self, entity_name: str):
+        """Get the pynetbox endpoint for an entity.
         
+        Args:
+            entity_name: Name of the entity
+        
+        Returns:
+            pynetbox endpoint or None
+            
+        """
+        # Map entity names to pynetbox endpoints
+        endpoint_map = {
+            "custom_fields": self.api.extras.custom_fields,
+            "custom_links": self.api.extras.custom_links,
+            "tags": self.api.extras.tags,
+            "config_templates": self.api.extras.config_templates,
+            "webhooks": self.api.extras.webhooks,
+            "tenant_groups": self.api.tenancy.tenant_groups,
+            "tenants": self.api.tenancy.tenants,
+            "site_groups": self.api.dcim.site_groups,
+            "regions": self.api.dcim.regions,
+            "rirs": self.api.ipam.rirs,
+            "asns": self.api.ipam.asns,
+            "sites": self.api.dcim.sites,
+            "locations": self.api.dcim.locations,
+            "rack_roles": self.api.dcim.rack_roles,
+            "racks": self.api.dcim.racks,
+            "power_panels": self.api.dcim.power_panels,
+            "power_feeds": self.api.dcim.power_feeds,
+            "manufacturers": self.api.dcim.manufacturers,
+            "platforms": self.api.dcim.platforms,
+            "device_roles": self.api.dcim.device_roles,
+            "device_types": self.api.dcim.device_types,
+            "cluster_types": self.api.virtualization.cluster_types,
+            "cluster_groups": self.api.virtualization.cluster_groups,
+            "clusters": self.api.virtualization.clusters,
+            "prefix_vlan_roles": self.api.ipam.prefix_vlan_roles,
+            "vlan_groups": self.api.ipam.vlan_groups,
+            "vlans": self.api.ipam.vlans,
+            "devices": self.api.dcim.devices,
+            "interfaces": self.api.dcim.interfaces,
+            "route_targets": self.api.ipam.route_targets,
+            "vrfs": self.api.ipam.vrfs,
+            "aggregates": self.api.ipam.aggregates,
+            "virtual_machines": self.api.virtualization.virtual_machines,
+            "virtualization_interfaces": self.api.virtualization.interfaces,
+            "prefixes": self.api.ipam.prefixes,
+            "ip_addresses": self.api.ipam.ip_addresses,
+            "primary_ips": self.api.ipam.primary_ips,
+            "services": self.api.ipam.services,
+            "service_templates": self.api.ipam.service_templates,
+            "providers": self.api.circuits.providers,
+            "circuit_types": self.api.circuits.circuit_types,
+            "circuits": self.api.circuits.circuits,
+            "cables": self.api.dcim.cables,
+            "config_contexts": self.api.extras.config_contexts,
+            "contact_groups": self.api.tenancy.contact_groups,
+            "contact_roles": self.api.tenancy.contact_roles,
+            "contacts": self.api.tenancy.contacts,
+            }
+            
+        return endpoint_map.get(entity_name)
+
     def get_device_type(self, name: str) -> Optional[Dict]:
         """Get device type by name.
         
@@ -59,7 +125,7 @@ class NetboxAPI:
         Returns:
             Site dictionary or None
         """
-        return self._get_first_by_name('dcim.site', name)
+        return self._get_first_by_name('sites', name)
         
     def get_device(self, name: str) -> Optional[Dict]:
         """Get device by name.
@@ -70,39 +136,39 @@ class NetboxAPI:
         Returns:
             Device dictionary or None
         """
-        return self._get_first_by_name('dcim.device', name)
+        return self.api.dcim.devices.get(name=name)
         
-    def get_interface(self, device: Dict, name: str) -> Optional[Dict]:
+    def get_interface(self, name: str, device: str) -> Optional[Dict]:
         """Get interface by name on device.
         
         Args:
-            device: Device dictionary
             name: Interface name
+            device: Device name
             
         Returns:
             Interface dictionary or None
         """
-        interfaces = self.api.dcim.interfaces.filter(device_id=device['id'])
+        interfaces = self.api.dcim.interfaces.filter(name=name, device=device)
         for interface in interfaces:
             if interface['name'] == name:
                 return interface
         return None
         
-    def _get_first_by_name(self, model: str, name: str) -> Optional[Dict]:
-        """Get first item by name from model.
+    def _get_first_by_name(self, entity_name, name: str) -> Optional[Dict]:
+        """Get item by name.
         
         Args:
-            model: Netbox model name
+            entity_name: Netbox entity
             name: Item name
             
         Returns:
             Item dictionary or None
         """
-        items = self.api.extras.audit_log.filter(model=model, name=name)
-        for item in items:
-            return item
-        return None
-
+        endpoint = self._get_endpoint(entity_name)
+        if not endpoint:
+            return None
+        return endpoint.get(name=name)
+        
     def get_or_create(self, entity_type: str, name: str, data: Dict[str, Any]) -> Optional[Dict]:
         """Get an existing entity or create a new one.
         
@@ -120,7 +186,7 @@ class NetboxAPI:
             
             # Handle entity names that might differ from method names
             # e.g., "virtual_machines" -> "virtual_machine", "device_types" -> "device_type"
-            if not hasattr(self.api, method_name):
+            if not hasattr(self, method_name):
                 # Try singular form
                 singular_name = entity_type
                 if entity_type.endswith("s"):
@@ -136,11 +202,18 @@ class NetboxAPI:
             
             # Try to get the entity
             try:
-                entity = getattr(self.api, method_name)(name)
+                if 'device' in data:
+                    # Get by device
+                    entity = getattr(self, method_name)(name, data['device'])
+                else:
+                    entity = getattr(self, method_name)(name)
                 if entity:
                     return entity
             except AttributeError:
-                pass
+                # Retry with generic method
+                entity = self._get_first_by_name(entity_type, name)
+                if entity:
+                    return entity
             except pynetbox.RequestError as e:
                 # If entity doesn't exist, this will raise an error, which is expected
                 if "Not Found" in str(e):
@@ -150,7 +223,7 @@ class NetboxAPI:
             
             # If we get here, the entity doesn't exist, so create it
             create_method_name = f"create_{entity_type}"
-            if not hasattr(self.api, create_method_name):
+            if not hasattr(self, create_method_name):
                 # Try singular form
                 singular_name = entity_type
                 if entity_type.endswith("s"):
@@ -167,7 +240,7 @@ class NetboxAPI:
             transformed_data = self.transformer.transform(entity_type, data) if self.transformer else data
             
             # Create the entity
-            entity = getattr(self.api, create_method_name)(**transformed_data)
+            entity = getattr(self, create_method_name)(transformed_data)
             
             # Return the created entity (includes ID and other fields)
             return entity
@@ -520,7 +593,25 @@ class NetboxAPI:
         except Exception as e:
             logger.error(f"Error creating config template: {e}")
             return None
+
+    def create_custom_field(self, custom_field_data: Dict) -> Optional[Dict]:
+        """Create custom field in Netbox.
+        
+        Args:
+            custom_field_data: Custom field data dictionary
             
+        Returns:
+            Created custom field dictionary or None
+        """
+        try:
+            transformed_data = self.transformer.transform_custom_fields(custom_field_data)
+            custom_field = self.api.extras.custom_fields.create(**transformed_data)
+            logger.info(f"Created custom field {transformed_data.get('name')}")
+            return custom_field
+        except Exception as e:
+            logger.error(f"Error creating custom field: {e}")
+            return None
+
     def create_custom_link(self, custom_link_data: Dict) -> Optional[Dict]:
         """Create custom link in Netbox.
         

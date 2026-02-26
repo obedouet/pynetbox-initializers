@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import pynetbox
 
+from nb_init.api import NetboxAPI
+
 
 class NetboxInitializer:
     """Handles initialization of Netbox entities from YAML configuration files.
@@ -71,6 +73,7 @@ class NetboxInitializer:
         """
         self.api = api
         self.yaml_dir = Path(yaml_dir)
+        self.nb_api = NetboxAPI(api=api)
         
     def initialize_all(self):
         """Initialize all entities in the correct order.
@@ -103,106 +106,42 @@ class NetboxInitializer:
             entity_name: Name of the entity
             data: Entity data from YAML
         """
-        # Get the appropriate API endpoint
-        endpoint = self._get_endpoint(entity_name)
-        if not endpoint:
-            return
             
         if isinstance(data, dict):
             # Process each item in the entity data
             for item_name, item_data in data.items():
                 if isinstance(item_data, dict) and not 'name' in item_data:
                     item_data.update({'name':item_name})
-                self._create_item(endpoint, item_name, item_data)
+                self._create_item(entity_name, item_name, item_data)
         else:
             for item_data in data:
                 if not 'name' in item_data:
                     print(f"Warning missing name in {entity_name}")
                     continue
-                self._create_item(endpoint, item_data['name'], item_data)
-            
-    def _get_endpoint(self, entity_name: str):
-        """Get the pynetbox endpoint for an entity.
-        
-        Args:
-            entity_name: Name of the entity
-        
-        Returns:
-            pynetbox endpoint or None
-            
-        """
-        # Map entity names to pynetbox endpoints
-        endpoint_map = {
-            "custom_fields": self.api.extras.custom_fields,
-            "custom_links": self.api.extras.custom_links,
-            "tags": self.api.extras.tags,
-            "config_templates": self.api.extras.config_templates,
-            "webhooks": self.api.extras.webhooks,
-            "tenant_groups": self.api.tenancy.tenant_groups,
-            "tenants": self.api.tenancy.tenants,
-            "site_groups": self.api.dcim.site_groups,
-            "regions": self.api.dcim.regions,
-            "rirs": self.api.ipam.rirs,
-            "asns": self.api.ipam.asns,
-            "sites": self.api.dcim.sites,
-            "locations": self.api.dcim.locations,
-            "rack_roles": self.api.dcim.rack_roles,
-            "racks": self.api.dcim.racks,
-            "power_panels": self.api.dcim.power_panels,
-            "power_feeds": self.api.dcim.power_feeds,
-            "manufacturers": self.api.dcim.manufacturers,
-            "platforms": self.api.dcim.platforms,
-            "device_roles": self.api.dcim.device_roles,
-            "device_types": self.api.dcim.device_types,
-            "cluster_types": self.api.virtualization.cluster_types,
-            "cluster_groups": self.api.virtualization.cluster_groups,
-            "clusters": self.api.virtualization.clusters,
-            "prefix_vlan_roles": self.api.ipam.prefix_vlan_roles,
-            "vlan_groups": self.api.ipam.vlan_groups,
-            "vlans": self.api.ipam.vlans,
-            "devices": self.api.dcim.devices,
-            "interfaces": self.api.dcim.interfaces,
-            "route_targets": self.api.ipam.route_targets,
-            "vrfs": self.api.ipam.vrfs,
-            "aggregates": self.api.ipam.aggregates,
-            "virtual_machines": self.api.virtualization.virtual_machines,
-            "virtualization_interfaces": self.api.virtualization.interfaces,
-            "prefixes": self.api.ipam.prefixes,
-            "ip_addresses": self.api.ipam.ip_addresses,
-            "primary_ips": self.api.ipam.primary_ips,
-            "services": self.api.ipam.services,
-            "service_templates": self.api.ipam.service_templates,
-            "providers": self.api.circuits.providers,
-            "circuit_types": self.api.circuits.circuit_types,
-            "circuits": self.api.circuits.circuits,
-            "cables": self.api.dcim.cables,
-            "config_contexts": self.api.extras.config_contexts,
-            "contact_groups": self.api.tenancy.contact_groups,
-            "contact_roles": self.api.tenancy.contact_roles,
-            "contacts": self.api.tenancy.contacts,
-            }
-            
-        return endpoint_map.get(entity_name)
-            
-    def _create_item(self, endpoint, item_name: str, item_data: Dict[str, Any]):
-        """Create an item in Netbox.
-        
+                self._create_item(entity_name, item_data['name'], item_data)
+                        
+    def _create_item(self, entity_name, item_name: str, item_data: Dict[str, Any]):
+        """Create or get an item in Netbox.
+
         Args:
             endpoint: pynetbox endpoint
             item_name: Name of the item
             item_data: Item data
         """
         try:
-            # Check if item already exists
-            existing = endpoint.get(name=item_name)
-            if existing:
-                print(f"Skipped {item_name}: already exists")
-                return
-                
-            # Create the item
-            created = endpoint.create(**item_data)
-            print(f"Created {item_name}: {item_name}")
+            # Use the new get_or_create method from NetboxApi
+            # Note: We need to determine the entity type from the endpoint
+            # For now, we'll assume item_data has the necessary structure
+            # or we'll call the method differently
+
+            # Call get_or_create with the data
+            result = self.nb_api.get_or_create(entity_name, item_name, item_data)
+            if result:
+                print(f"{'Got' if result else 'Created'} {item_name}")
+            else:
+                print(f"Error processing {item_name}")
+
         except pynetbox.RequestError as e:
-            print(f"Error creating {item_name}: {e}")
+            print(f"Error processing {item_name}: {e}")
         except Exception as e:
-            print(f"Unexpected error creating {item_name}: {e}")
+            print(f"Unexpected error processing {item_name}: {e}")
