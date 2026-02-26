@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 import pynetbox
 from .connection import NetboxConnection
 from .transformations import EntityTransformer
+from .nb_naming import get_unique_name
 
 logger = logging.getLogger(__name__)
 
@@ -86,21 +87,20 @@ class NetboxAPI:
             
         return endpoint_map.get(entity_name)
 
-    def get_device_type(self, name: str) -> Optional[Dict]:
-        """Get device type by name.
-        
+    def get_device_types(self, name: str)-> Optional[Dict]:
+        """Get a device types.
+
         Args:
-            name: Device type name
-            
-        Returns:
-            Device type dictionary or None
-        """
-        try:
-            return self.api.ipam.device_types.get(name=name)
-        except Exception as e:
-            logger.error(f"Error getting device type {name}: {e}")
-            return None
+            name: model name
         
+        Returns:
+            Item dictionary or None
+        """
+        endpoint = self._get_endpoint('device_types')
+        if not endpoint:
+            return None
+        return endpoint.get(model=name)
+
     def get_device_role(self, name: str) -> Optional[Dict]:
         """Get device role by name.
         
@@ -269,7 +269,25 @@ class NetboxAPI:
         except Exception as e:
             logger.error(f"Error creating device: {e}")
             return None
+
+    def create_device_type(self, device_type_data: Dict) -> Optional[Dict]:
+        """Create device_type.
+        
+        Args:
+            device_type_data: device_type data dictionary
             
+        Returns:
+            Created device or None
+        """
+        try:
+            transformed_data = self.transformer.transform_device_types(device_type_data)
+            device = (self._get_endpoint('device_types')).create(**transformed_data)
+            logger.info(f"Created device {transformed_data.get(get_unique_name('device_types', device_type_data))}")
+            return device
+        except Exception as e:
+            logger.error(f"Error creating device_types: {e}")
+            return None
+
     def create_ip_address(self, ip_data: Dict) -> Optional[Dict]:
         """Create IP address.
         
