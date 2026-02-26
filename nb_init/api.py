@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 import pynetbox
 from .connection import NetboxConnection
 from .transformations import EntityTransformer
+from .nb_endpoints import get_endpoint
 from .nb_naming import get_unique_name
 from .name_template import expand_name_template
 
@@ -26,69 +27,19 @@ class NetboxAPI:
         self.transformer = EntityTransformer()
         self.primary_ips = []
 
-    def _get_endpoint(self, entity_name: str):
-        """Get the pynetbox endpoint for an entity.
+    def _look_primary_ip_address(self, ip_address):
+        """Look for primary ip_address.
         
         Args:
-            entity_name: Name of the entity
-        
+            ip_address: IP Address
+
         Returns:
-            pynetbox endpoint or None
-            
+            dict(ip_address, device) or None
         """
-        # Map entity names to pynetbox endpoints
-        endpoint_map = {
-            "custom_fields": self.api.extras.custom_fields,
-            "custom_links": self.api.extras.custom_links,
-            "tags": self.api.extras.tags,
-            "config_templates": self.api.extras.config_templates,
-            "webhooks": self.api.extras.webhooks,
-            "tenant_groups": self.api.tenancy.tenant_groups,
-            "tenants": self.api.tenancy.tenants,
-            "site_groups": self.api.dcim.site_groups,
-            "regions": self.api.dcim.regions,
-            "rirs": self.api.ipam.rirs,
-            "asns": self.api.ipam.asns,
-            "sites": self.api.dcim.sites,
-            "locations": self.api.dcim.locations,
-            "rack_roles": self.api.dcim.rack_roles,
-            "racks": self.api.dcim.racks,
-            "power_panels": self.api.dcim.power_panels,
-            "power_feeds": self.api.dcim.power_feeds,
-            "manufacturers": self.api.dcim.manufacturers,
-            "platforms": self.api.dcim.platforms,
-            "device_roles": self.api.dcim.device_roles,
-            "device_types": self.api.dcim.device_types,
-            "cluster_types": self.api.virtualization.cluster_types,
-            "cluster_groups": self.api.virtualization.cluster_groups,
-            "clusters": self.api.virtualization.clusters,
-            "prefix_vlan_roles": self.api.ipam.roles,
-            "vlan_groups": self.api.ipam.vlan_groups,
-            "vlans": self.api.ipam.vlans,
-            "devices": self.api.dcim.devices,
-            "interfaces": self.api.dcim.interfaces,
-            "route_targets": self.api.ipam.route_targets,
-            "vrfs": self.api.ipam.vrfs,
-            "aggregates": self.api.ipam.aggregates,
-            "virtual_machines": self.api.virtualization.virtual_machines,
-            "virtualization_interfaces": self.api.virtualization.interfaces,
-            "prefixes": self.api.ipam.prefixes,
-            "ip_addresses": self.api.ipam.ip_addresses,
-            "primary_ips": self.api.ipam.primary_ips,
-            "services": self.api.ipam.services,
-            "service_templates": self.api.ipam.service_templates,
-            "providers": self.api.circuits.providers,
-            "circuit_types": self.api.circuits.circuit_types,
-            "circuits": self.api.circuits.circuits,
-            "cables": self.api.dcim.cables,
-            "config_contexts": self.api.extras.config_contexts,
-            "contact_groups": self.api.tenancy.contact_groups,
-            "contact_roles": self.api.tenancy.contact_roles,
-            "contacts": self.api.tenancy.contacts,
-            "interface_templates": self.api.dcim.interface_templates
-            }
-            
-        return endpoint_map.get(entity_name)
+        for ip in self.primary_ips:
+            if ip_address == ip['ip4']:
+                return ip
+        return None
 
     def get_device_types(self, name: str)-> Optional[Dict]:
         """Get a device types.
@@ -99,7 +50,7 @@ class NetboxAPI:
         Returns:
             Item dictionary or None
         """
-        endpoint = self._get_endpoint('device_types')
+        endpoint = get_endpoint(self.api, 'device_types')
         if not endpoint:
             return None
         return endpoint.get(model=name)
@@ -166,7 +117,7 @@ class NetboxAPI:
         Returns:
             Item dictionary or None
         """
-        endpoint = self._get_endpoint('ip_addresses')
+        endpoint = get_endpoint(self.api, 'ip_addresses')
         if not endpoint:
             return None
         return endpoint.get(address=name, device=device)
@@ -180,7 +131,7 @@ class NetboxAPI:
         Returns:
             Item dictionary or None
         """
-        endpoint = self._get_endpoint('prefixes')
+        endpoint = get_endpoint(self.api, 'prefixes')
         if not endpoint:
             return None
         return endpoint.get(prefix=name)
@@ -195,7 +146,7 @@ class NetboxAPI:
         Returns:
             Item dictionary or None
         """
-        endpoint = self._get_endpoint(entity_name)
+        endpoint = get_endpoint(self.api, entity_name)
         if not endpoint:
             return None
         return endpoint.get(name=name)
@@ -333,7 +284,7 @@ class NetboxAPI:
                     logger.error(f"Error checking manufacturer: {transformed_data['manufacturer']}")
                     return None
                 transformed_data['manufacturer']=device_manufacturer['id']
-            device = (self._get_endpoint('device_types')).create(**transformed_data)
+            device = (get_endpoint(self.api, 'device_types')).create(**transformed_data)
             logger.info(f"Created device {transformed_data.get(get_unique_name('device_types', device_type_data))}")
             if 'interfaces' in transformed_data:
                 for intf_template in transformed_data['interfaces']:
@@ -360,7 +311,7 @@ class NetboxAPI:
         """
         try:
             transformed_data = self.transformer.transform_interface_templates(interface_data)
-            interface = (self._get_endpoint('interface_templates')).create(**transformed_data)
+            interface = (get_endpoint(self.api, 'interface_templates')).create(**transformed_data)
             logger.info(f"Created interface {transformed_data.get(get_unique_name('interface_templates', interface_data))}")
             return interface
         except Exception as e:
@@ -377,9 +328,42 @@ class NetboxAPI:
             Created IP address or None
         """
         try:
+            device=None
             transformed_data = self.transformer.transform_ip_addresses(ip_data)
+            
+            if 'device' in transformed_data:
+                # Get device id
+                device = self.get_device(transformed_data['device'])
+                if device is None:
+                    logger.error(f"Error device {transformed_data['device']} for ip_address {transformed_data.get('address')} not found")
+                    return None
+                transformed_data.pop('device')
+            
+            if device and 'interface' in transformed_data:
+                # Get interface id
+                ip_interface = self.get_interface(transformed_data['interface'], device['name'])
+                if ip_interface is None:
+                    logger.error(f"Error interface {transformed_data['interface']} on {transformed_data['device']} for ip_address {transformed_data.get('address')} not found")
+                    return None
+                transformed_data.pop('interface')
+                transformed_data['assigned_object_id']=ip_interface['id']
+
+            if 'vrf' in transformed_data:
+                ip_vrf = self._get_first_by_name('vrfs', transformed_data['vrf'])
+                if ip_vrf is None:
+                    logger.error(f"Vrf {transformed_data['vrf']} for ip_address {transformed_data.get('address')} not found")
+                    return None
+                transformed_data['vrf']=ip_vrf['id']
+            
             ip = self.api.ipam.ip_addresses.create(**transformed_data)
             logger.info(f"Created IP address {transformed_data.get('address')}")
+
+            is_assigned = self._look_primary_ip_address(transformed_data['address'])
+            if is_assigned is not None and device:
+                # configure primary ip4
+                if device['name']==is_assigned['device']:
+                    device['primary_ip4']=ip['id']
+                    (get_endpoint(self.api, "devices")).update(device)
             return ip
         except Exception as e:
             logger.error(f"Error creating IP address: {e}")
