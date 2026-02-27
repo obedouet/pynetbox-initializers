@@ -38,3 +38,9 @@ The default config file is "nb-init.yaml".
 
 nb-init will look for a "yaml" directory and will proceed for each ".yml" file located in. Files must respect the input for netbox-initializers, same naming, same format.
 nb-init will check and push through Netbox API using pynetbox.
+
+## Changelog
+
+| Release | Changes |
+| ------- | ------- |
+| 0.1.6 | * first 'stable' version<br> * device creation support/tested<br> * ip_address creation support/tested<br> * custom_fields creation support/tested<br> |
