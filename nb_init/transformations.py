@@ -195,6 +195,8 @@ class EntityTransformer:
     @staticmethod
     def transform_devices(data: Dict[str, Any]) -> Dict[str, Any]:
         """Transform devices YAML data if needed."""
+        if 'custom_field_data' in data:
+            data['custom_fields']=data.pop('custom_field_data')
         return data
     
     @staticmethod
