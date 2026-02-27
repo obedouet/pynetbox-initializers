@@ -399,6 +399,7 @@ class NetboxAPI:
                     return None
                 transformed_data.pop('interface')
                 transformed_data['assigned_object_id']=ip_interface['id']
+                transformed_data['assigned_object_type']="dcim.interface"
 
             if 'vrf' in transformed_data:
                 ip_vrf = self._get_first_by_name('vrfs', transformed_data['vrf'])
@@ -414,7 +415,7 @@ class NetboxAPI:
             if is_assigned is not None and device:
                 # configure primary ip4
                 if device['name']==is_assigned['device']:
-                    device['primary_ip4']=ip['id']
+                    device.primary_ip4=ip['id']
                     device.save()
             return ip
         except Exception as e:
